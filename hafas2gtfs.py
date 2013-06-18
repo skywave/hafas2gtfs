@@ -14,7 +14,7 @@ Options:
 
 """
 import os
-from datetime import datetime
+from datetime import datetime,timedelta
 
 import unicodecsv
 from pyproj import Proj
@@ -53,7 +53,8 @@ GTFS_FILES = {
     'trips.txt': ('route_id', 'service_id', 'trip_id', 'trip_headsign', 'trip_short_name', 'direction_id', 'block_id', 'shape_id'),
     'stop_times.txt': ('trip_id', 'arrival_time', 'departure_time', 'stop_id', 'stop_sequence', 'stop_headsign', 'pickup_type', 'drop_off_type', 'shape_dist_traveled'),
     'stops.txt': ('stop_id', 'stop_code', 'stop_name', 'stop_desc', 'stop_lat', 'stop_lon', 'zone_id', 'stop_url', 'location_type', 'parent_station'),
-    'calendar.txt': ('service_id', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'start_date', 'end_date')
+    'calendar.txt': ('service_id', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'start_date', 'end_date'),
+    'calendar_dates.txt': ('service_id', 'date', 'exception_type')
 }
 
 """
@@ -119,9 +120,10 @@ class Hafas2GTFS(object):
         self.make_gtfs_files()
         self.service_id = self.parse_eckdaten()
         self.parse_bitfield()
+        self.write_servicedates()
         self.agency_id = self.write_agency()
         self.parse_fplan()
-
+ 
     def write_agency(self):
         self.agency_id = '1'
         self.files['agency.txt'].writerow({
@@ -134,21 +136,17 @@ class Hafas2GTFS(object):
         })
         return self.agency_id
 
-    def write_service(self, start, end):
-        self.service_id = '1'
-        self.files['calendar.txt'].writerow({
-            'service_id': self.service_id,
-            'monday': '1',
-            'tuesday': '1',
-            'wednesday': '1',
-            'thursday': '1',
-            'friday': '1',
-            'saturday': '1',
-            'sunday': '1',
-            'start_date': start.strftime('%Y%m%d'),
-            'end_date': end.strftime('%Y%m%d')
-        })
-        return self.service_id
+    def write_servicedates(self):
+        for service_id,bitfield in self.services.items():
+            y = str(bitfield.bin)
+            for z in range(0, len(y)):
+                if y[z] == '1':
+                    date = (self.start + timedelta(days=z))
+                    self.files['calendar_dates.txt'].writerow({
+                                                           'service_id': service_id,
+                                                           'date': (self.start + timedelta(days=z)).strftime('%Y%m%d'),
+                                                           'exception_type' : 1})
+        return None
 
     def write_route(self, meta):
         route_id = meta.get('line_number')
@@ -235,9 +233,9 @@ class Hafas2GTFS(object):
     def parse_eckdaten(self):
         contents = file(self.get_path(self.get_name('eckdaten'))).read()
         data = contents.splitlines()
-        start = datetime.strptime(data[0], '%d.%m.%Y')
-        end = datetime.strptime(data[1], '%d.%m.%Y')
-        return self.write_service(start, end)
+        self.start = datetime.strptime(data[0], '%d.%m.%Y')
+        self.end = datetime.strptime(data[1], '%d.%m.%Y')
+        self.name = data[1]
 
     def parse_bitfield(self):
         self.services = {}
